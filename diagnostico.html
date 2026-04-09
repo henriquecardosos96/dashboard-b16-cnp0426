@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>B16 — Diagnóstico de Conexão</title>
+<style>
+  body { font-family: monospace; background: #0d0d0d; color: #f0f0f0; padding: 40px; max-width: 800px; }
+  h1 { color: #d4a800; margin-bottom: 8px; }
+  p  { color: #666; margin-bottom: 32px; font-size: 13px; }
+  .test { background: #1a1a1a; border-radius: 8px; padding: 20px; margin-bottom: 16px; border-left: 4px solid #333; }
+  .test.ok     { border-color: #16a34a; }
+  .test.fail   { border-color: #ef4444; }
+  .test.running{ border-color: #d4a800; }
+  .label { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 6px; }
+  .status { font-size: 16px; font-weight: bold; margin-bottom: 8px; }
+  .status.ok   { color: #16a34a; }
+  .status.fail { color: #ef4444; }
+  .status.run  { color: #d4a800; }
+  .detail { font-size: 12px; color: #888; line-height: 1.6; word-break: break-all; }
+  .btn { background: #d4a800; color: #000; border: none; padding: 12px 24px; border-radius: 6px; cursor: pointer; font-family: monospace; font-size: 14px; font-weight: bold; margin-top: 16px; }
+  .btn:hover { background: #c49200; }
+  pre { background: #111; padding: 12px; border-radius: 4px; font-size: 11px; overflow-x: auto; color: #aaa; margin-top: 8px; max-height: 120px; overflow-y: auto; }
+</style>
+</head>
+<body>
+<h1>🔍 B16 — Diagnóstico de Conexão</h1>
+<p>Testa o acesso às 3 abas do Google Sheets sem renderizar o dashboard. Identifica exatamente onde está o problema.</p>
+
+<div class="test" id="t1">
+  <div class="label">Teste 1 — Aba: Dados Meta Ads</div>
+  <div class="status run" id="s1">⏳ Aguardando...</div>
+  <div class="detail" id="d1">—</div>
+</div>
+
+<div class="test" id="t2">
+  <div class="label">Teste 2 — Aba: Elementor</div>
+  <div class="status run" id="s2">⏳ Aguardando...</div>
+  <div class="detail" id="d2">—</div>
+</div>
+
+<div class="test" id="t3">
+  <div class="label">Teste 3 — Aba: Pesquisa</div>
+  <div class="status run" id="s3">⏳ Aguardando...</div>
+  <div class="detail" id="d3">—</div>
+</div>
+
+<div class="test" id="t4">
+  <div class="label">Teste 4 — Parse dos dados Meta Ads</div>
+  <div class="status run" id="s4">⏳ Aguardando fetch...</div>
+  <div class="detail" id="d4">—</div>
+  <pre id="p4"></pre>
+</div>
+
+<button class="btn" onclick="runAll()">▶ Rodar diagnóstico novamente</button>
+
+<script>
+const SHEET_ID = '1-TPcsDTXvBUxJ30FAPrpkzw71qY4DYUA210I0V_SklQ';
+const csvURL = s => `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(s)}`;
+
+function setOK(n, msg)   { document.getElementById('t'+n).className='test ok';   document.getElementById('s'+n).className='status ok';   document.getElementById('s'+n).textContent='✅ '+msg; }
+function setFail(n, msg) { document.getElementById('t'+n).className='test fail';  document.getElementById('s'+n).className='status fail';  document.getElementById('s'+n).textContent='❌ '+msg; }
+function setRun(n, msg)  { document.getElementById('t'+n).className='test running';document.getElementById('s'+n).className='status run';   document.getElementById('s'+n).textContent='⏳ '+msg; }
+function setDetail(n, v) { document.getElementById('d'+n).textContent=v; }
+function setPre(n, v)    { const el=document.getElementById('p'+n); if(el)el.textContent=v; }
+
+async function testFetch(n, sheetName) {
+  setRun(n, 'Conectando...');
+  setDetail(n, 'URL: ' + csvURL(sheetName));
+  try {
+    const start = Date.now();
+    const r = await fetch(csvURL(sheetName) + '&cb=' + Date.now(), { cache: 'no-store' });
+    const elapsed = Date.now() - start;
+    setDetail(n, `HTTP ${r.status} ${r.statusText} · ${elapsed}ms · URL: ${csvURL(sheetName)}`);
+    if (!r.ok) { setFail(n, `HTTP ${r.status} — aba "${sheetName}" não acessível`); return null; }
+    const text = await r.text();
+    const lines = text.trim().split('\n').length;
+    setOK(n, `OK — ${lines} linhas · ${(text.length/1024).toFixed(1)}KB em ${elapsed}ms`);
+    return text;
+  } catch(e) {
+    setFail(n, 'Erro de rede: ' + e.message);
+    setDetail(n, `Causa provável: CORS bloqueado ou sem conexão.\nErro: ${e.toString()}`);
+    return null;
+  }
+}
+
+function parseCSV(text) {
+  const lines = text.trim().replace(/\r\n/g,'\n').replace(/\r/g,'\n').split('\n');
+  function parseLine(line) {
+    const vals=[]; let cur='',inQ=false;
+    for(let i=0;i<line.length;i++){
+      const ch=line[i];
+      if(ch==='"'){if(inQ&&line[i+1]==='"'){cur+='"';i++;}else inQ=!inQ;}
+      else if(ch===','&&!inQ){vals.push(cur.trim());cur='';}
+      else cur+=ch;
+    }
+    vals.push(cur.trim()); return vals;
+  }
+  const headers=parseLine(lines[0]).map(h=>h.replace(/^"|"$/g,'').trim());
+  return lines.slice(1).filter(l=>l.trim()).map(line=>{
+    const vals=parseLine(line),obj={};
+    headers.forEach((h,i)=>{obj[h]=(vals[i]||'').replace(/^"|"$/g,'').trim();});
+    return obj;
+  });
+}
+
+async function runAll() {
+  // Reset
+  [1,2,3,4].forEach(n=>{setRun(n,'Aguardando...');setDetail(n,'—');});
+
+  const tMeta = await testFetch(1, 'Dados Meta Ads');
+  const tWP   = await testFetch(2, 'Elementor');
+  const tPesq = await testFetch(3, 'Pesquisa');
+
+  // Teste 4: parse
+  setRun(4, 'Testando parse...');
+  if (!tMeta) { setFail(4, 'Não foi possível testar — fetch da aba Meta falhou'); return; }
+  try {
+    const rows = parseCSV(tMeta);
+    const headers = Object.keys(rows[0] || {});
+    const filtered = rows.filter(r => (r['Date']||'').trim() >= '2026-04-05' && (r['Campaign Name']||'').includes('[CNP]'));
+    setOK(4, `Parse OK — ${rows.length} linhas totais · ${filtered.length} linhas filtradas [CNP] a partir 05/04`);
+    setDetail(4, `Colunas detectadas: ${headers.join(' | ')}`);
+    const spend = filtered.reduce((s,r)=>{
+      const v = parseFloat((r['Spend (Cost, Amount Spent)']||'0').replace(',','.'));
+      return s + (isNaN(v)?0:v);
+    }, 0);
+    setPre(4, `Primeiras 3 linhas filtradas:\n${JSON.stringify(filtered.slice(0,3), null, 2)}\n\nSpend total calculado: R$ ${spend.toFixed(2)}`);
+  } catch(e) {
+    setFail(4, 'Erro no parse: ' + e.message);
+    setPre(4, e.toString());
+  }
+}
+
+runAll();
+</script>
+</body>
+</html>
