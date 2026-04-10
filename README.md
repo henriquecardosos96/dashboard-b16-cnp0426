@@ -158,3 +158,17 @@ Os dados são atualizados automaticamente a cada 2 horas diretamente do Google S
 - Visual clean: fundo off-white, preto e amarelo B16
 - Dados de leads estáticos (WordPress/Elementor)
 - Filtro por campanhas com tag `[CNP]` a partir de 05/04/2026
+
+
+### v6 · 10/04/2026
+`feat: previsao de leads com slider + 3 cenarios dinamicos`
+
+**Novas funcionalidades:**
+- Seção "Previsão de Leads até o Evento" no topo da aba Insights
+- Slider de investimento de R$ 0 a R$ 70.000 (passo R$ 500)
+- 3 cenários calculados automaticamente com base no CPL atual:
+  - 🚀 Otimista: CPL atual × 1,0
+  - 🎯 Realista: CPL atual × 1,36 (+36%)
+  - 🛡️ Conservador: CPL atual × 1,56 (+56%)
+- Cenários atualizam automaticamente quando o período ou dados mudam
+- Nota metodológica explicando a lógica dos multiplicadores
